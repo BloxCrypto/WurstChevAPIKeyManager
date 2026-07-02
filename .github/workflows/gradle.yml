@@ -2,38 +2,60 @@ name: Java CI with Gradle
 
 on:
   push:
-    branches-ignore:
-    - "dependabot/**"
-    tags-ignore:
-    - "**"
-    paths:
-    - "**.java"
-    - "**.json"
-    - "**.yml"
-    - "gradle**"
-    - "*.gradle"
-    - "*.accesswidener"
+    branches: [ "main", "master" ]
   pull_request:
-    paths:
-    - "**.java"
-    - "**.json"
-    - "**.yml"
-    - "gradle**"
-    - "*.gradle"
-    - "*.accesswidener"
-  workflow_dispatch:
-    inputs:
-      distinct_id:
-        required: false
+    branches: [ "main", "master" ]
+  workflow_dispatch: # Allows you to trigger the build manually from GitHub UI
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
 
-    - name: Echo distinct ID ${{ inputs.distinct_id }}
-      run: echo ${{ inputs.distinct_id }}
+    - name: Checkout repository
+      uses: actions/checkout@v4
 
+    - name: Set up Java
+      uses: actions/setup-java@v4
+      with:
+        java-version: "21" # Change to "17" if targeting Minecraft 1.18 - 1.20.4
+        distribution: "microsoft"
+
+    # Grants runner system permission to execute gradle tasks
+    - name: Grant execute permission for gradlew
+      run: chmod +x gradlew
+
+    # Advanced Gradle setup handles automatic caching of your dependencies
+    - name: Setup Gradle
+      uses: gradle/actions/setup-gradle@v4
+      with:
+        build-scan-publish: false
+
+    # Safe network dependency resolving loop
+    - name: Resolve dependencies
+      run: |
+        max_attempts=3
+        attempt=1
+        until ./gradlew dependencies --stacktrace; do
+          if [ $attempt -ge $max_attempts ]; then
+            echo "Failed to resolve dependencies after $max_attempts attempts"
+            exit 1
+          fi
+          echo "Attempt $attempt failed, retrying in 30 seconds..."
+          attempt=$((attempt + 1))
+          sleep 30
+        done
+
+    # Compiles and builds your Minecraft Mod file
+    - name: Build Mod
+      run: ./gradlew build --stacktrace
+
+    # Saves your built mod .jar so you can download it from GitHub Actions
+    - name: Upload Mod Jar Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: Compiled-Minecraft-Mod
+        path: build/libs/*.jar
     - name: Checkout repository
       uses: actions/checkout@v7
 
